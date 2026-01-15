@@ -20,6 +20,7 @@ const Expenses = () => {
     date: new Date().toISOString().split('T')[0],
     item: '',
     category: 'Food',
+    account: 'CASH', // Added Default Account
     amount: ''
   });
   const [isEditing, setIsEditing] = useState(false);
@@ -34,13 +35,11 @@ const Expenses = () => {
   useEffect(() => {
     if (!userPin) return;
 
-    // Query: Get only expenses where 'pin' matches the user's PIN
     const q = query(collection(db, "expenses"), where("pin", "==", userPin));
 
-    // onSnapshot listens for changes instantly
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const expensesData = snapshot.docs.map(doc => ({
-        id: doc.id, // Firestore creates unique IDs automatically
+        id: doc.id,
         ...doc.data()
       }));
       setExpenses(expensesData);
@@ -63,12 +62,13 @@ const Expenses = () => {
     }
 
     const processedData = {
-      pin: userPin, // IMPORTANT: Save the PIN with the data
+      pin: userPin,
       date: formData.date,
       item: formData.item || 'Untitled',
       category: formData.category,
+      account: formData.account, // Saving Account Info
       amount: parseFloat(formData.amount),
-      createdAt: new Date() // Helper for sorting if needed
+      createdAt: new Date()
     };
 
     try {
@@ -88,6 +88,7 @@ const Expenses = () => {
         date: new Date().toISOString().split('T')[0],
         item: '',
         category: 'Food',
+        account: 'CASH', // Reset to default
         amount: ''
       });
     } catch (error) {
@@ -107,6 +108,7 @@ const Expenses = () => {
       date: expense.date,
       item: expense.item,
       category: expense.category,
+      account: expense.account || 'CASH', // Handle old data that might not have account
       amount: expense.amount
     });
     setIsEditing(true);
@@ -121,11 +123,12 @@ const Expenses = () => {
       date: new Date().toISOString().split('T')[0],
       item: '',
       category: 'Food',
+      account: 'CASH',
       amount: ''
     });
   };
 
-  // Grouping Logic (Client side)
+  // Grouping Logic
   const getGroupedExpenses = () => {
     const groups = {};
     const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -157,7 +160,8 @@ const Expenses = () => {
         </button>
       </nav>
 
-      <div className="max-w-5xl mx-auto p-6 space-y-8">
+      <div className="max-w-6xl mx-auto p-6 space-y-8"> 
+        {/* Changed max-w-5xl to max-w-6xl to fit the extra column nicely */}
         
         {/* INPUT FORM */}
         <div className={`p-6 rounded-2xl shadow-sm border transition-all duration-300 ${isEditing ? 'bg-emerald-100 border-emerald-300' : 'bg-white border-emerald-100'}`}>
@@ -165,18 +169,31 @@ const Expenses = () => {
             <h3 className="text-lg font-bold">{isEditing ? 'Editing Expense...' : 'Add New Expense'}</h3>
             {isEditing && <button onClick={handleCancelEdit} className="text-sm text-red-500 hover:underline">Cancel</button>}
           </div>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-4"> 
+             {/* Changed grid cols to 6 to fit new field */}
+            
             <input type="date" name="date" value={formData.date} onChange={handleChange} className="p-3 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none" />
+            
+            <input type="text" name="item" placeholder="Item Name (Optional)" value={formData.item} onChange={handleChange} className="p-3 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none md:col-span-2" />
+            
             <select name="category" value={formData.category} onChange={handleChange} className="p-3 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none">
+              <option>Food</option>
               <option>Metro Ticket (Recharge)</option>
               <option>Ticket</option>
               <option>Parking</option>
               <option>Shopping</option>
-              <option>Food</option>
               <option>Entertainment</option>
               <option>Others</option>
             </select>
-            <input type="text" name="item" placeholder="Item Name (Optional)" value={formData.item} onChange={handleChange} className="p-3 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none md:col-span-2" />
+
+            {/* NEW BANK ACCOUNT DROPDOWN */}
+            <select name="account" value={formData.account} onChange={handleChange} className="p-3 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none font-semibold text-emerald-800">
+              <option value="CASH">CASH</option>
+              <option value="HDFC">HDFC</option>
+              <option value="SBI">SBI</option>
+              <option value="KOTAK">KOTAK</option>
+            </select>
+
             <div className="relative">
                <span className="absolute left-3 top-3 text-gray-400">₹</span>
                <input type="number" name="amount" placeholder="Amount" value={formData.amount} onChange={handleChange} className="w-full p-3 pl-8 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none" />
@@ -210,6 +227,7 @@ const Expenses = () => {
                       <th className="p-4 font-semibold">Date</th>
                       <th className="p-4 font-semibold">Item</th>
                       <th className="p-4 font-semibold">Category</th>
+                      <th className="p-4 font-semibold">Account</th> {/* New Header */}
                       <th className="p-4 font-semibold">Amount</th>
                       <th className="p-4 font-semibold text-center">Actions</th>
                     </tr>
@@ -220,6 +238,12 @@ const Expenses = () => {
                         <td className="p-4 text-gray-600 text-sm">{expense.date}</td>
                         <td className="p-4 font-medium text-gray-800">{expense.item}</td>
                         <td className="p-4"><span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">{expense.category}</span></td>
+                        
+                        {/* New Account Column */}
+                        <td className="p-4 text-sm font-bold text-gray-600">
+                          {expense.account || 'CASH'}
+                        </td>
+                        
                         <td className="p-4 font-bold text-emerald-700">₹{expense.amount}</td>
                         <td className="p-4 text-center">
                           <div className="flex justify-center gap-2">
@@ -232,7 +256,7 @@ const Expenses = () => {
                   </tbody>
                   <tfoot>
                     <tr className="bg-emerald-50 border-t-2 border-emerald-100">
-                      <td colSpan="3" className="p-4 text-right font-bold text-emerald-900 uppercase text-sm">Total for {month}:</td>
+                      <td colSpan="4" className="p-4 text-right font-bold text-emerald-900 uppercase text-sm">Total for {month}:</td> {/* Increased colSpan */}
                       <td colSpan="2" className="p-4 font-extrabold text-xl text-emerald-700">₹{monthTotal.toFixed(2)}</td>
                     </tr>
                   </tfoot>
