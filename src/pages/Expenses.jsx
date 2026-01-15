@@ -64,7 +64,7 @@ const Expenses = () => {
     const processedData = {
       pin: userPin,
       date: formData.date,
-      item: formData.item || 'Untitled',
+      item: formData.item || '-',
       category: formData.category,
       account: formData.account, // Saving Account Info
       amount: parseFloat(formData.amount),
