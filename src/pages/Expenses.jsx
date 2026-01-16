@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Trash2, LogOut, DollarSign, Calendar, Pencil, Save } from 'lucide-react';
+import { Plus, Trash2, LogOut, DollarSign, Calendar, Pencil, Save, FileDown, FileUp, Upload } from 'lucide-react';
 
 // FIREBASE IMPORTS
 import { db } from '../firebase';
@@ -10,19 +10,35 @@ const Expenses = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const userPin = location.state?.pin;
+  const fileInputRef = useRef(null); // Ref for hidden file input
 
-  // State
+  // --- DEFAULT LISTS ---
+  const defaultCategories = ["Food", "Metro Ticket (Recharge)", "Ticket", "Parking", "Petrol", "Shopping", "Entertainment", "Others"];
+  const defaultAccounts = ["CASH", "HDFC", "SBI", "KOTAK"];
+
+  // --- STATE FOR DROPDOWNS ---
+  const [categories, setCategories] = useState(() => {
+    const saved = localStorage.getItem('customCategories');
+    return saved ? JSON.parse(saved) : defaultCategories;
+  });
+
+  const [accounts, setAccounts] = useState(() => {
+    const saved = localStorage.getItem('customAccounts');
+    return saved ? JSON.parse(saved) : defaultAccounts;
+  });
+
+  // --- DATA STATE ---
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Form State
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     item: '',
     category: 'Food',
-    account: 'CASH', // Added Default Account
+    account: 'CASH',
     amount: ''
   });
+  
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState(null);
 
@@ -31,12 +47,10 @@ const Expenses = () => {
     if (!userPin) navigate('/');
   }, [userPin, navigate]);
 
-  // --- 1. REAL-TIME SYNC FROM FIREBASE ---
+  // --- REAL-TIME SYNC FROM FIREBASE ---
   useEffect(() => {
     if (!userPin) return;
-
     const q = query(collection(db, "expenses"), where("pin", "==", userPin));
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const expensesData = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -45,13 +59,123 @@ const Expenses = () => {
       setExpenses(expensesData);
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, [userPin]);
 
-  // --- Handlers ---
+  // --- CSV EXPORT FUNCTION ---
+  const handleExport = () => {
+    if (expenses.length === 0) {
+      alert("No data to export!");
+      return;
+    }
+
+    // 1. Create CSV Header
+    const headers = ["Date", "Item", "Category", "Account", "Amount"];
+    
+    // 2. Map data to rows
+    const rows = expenses.map(exp => [
+      exp.date,
+      `"${exp.item.replace(/"/g, '""')}"`, // Handle commas/quotes in item name
+      exp.category,
+      exp.account || 'CASH',
+      exp.amount
+    ]);
+
+    // 3. Join everything
+    const csvContent = [
+      headers.join(","), 
+      ...rows.map(row => row.join(","))
+    ].join("\n");
+
+    // 4. Create Download Link
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `expenses_${userPin}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // --- CSV IMPORT FUNCTION ---
+  const handleImportClick = () => {
+    fileInputRef.current.click(); // Trigger hidden input
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target.result;
+      const lines = text.split("\n");
+      
+      // Remove header row if present (simple check: if first line contains "Date")
+      const startIdx = lines[0].toLowerCase().includes("date") ? 1 : 0;
+      
+      let count = 0;
+
+      // Loop through lines
+      for (let i = startIdx; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        // Basic CSV splitting (handling simple cases)
+        // Format expected: date, item, category, account, amount
+        // NOTE: This basic split might fail if item name has commas. 
+        // For simple use, we assume clean CSVs.
+        const cols = line.split(",");
+        
+        if (cols.length >= 5) {
+          const newExpense = {
+            pin: userPin,
+            date: cols[0].trim(),
+            item: cols[1].replace(/"/g, '').trim(), // Remove quotes if present
+            category: cols[2].trim(),
+            account: cols[3].trim(),
+            amount: parseFloat(cols[4].trim()),
+            createdAt: new Date()
+          };
+
+          // Basic validation
+          if (newExpense.amount && !isNaN(newExpense.amount)) {
+            await addDoc(collection(db, "expenses"), newExpense);
+            count++;
+          }
+        }
+      }
+      alert(`Successfully imported ${count} expenses!`);
+      event.target.value = ''; // Reset input
+    };
+    reader.readAsText(file);
+  };
+
+  // --- HANDLERS (Same as before) ---
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'category' && value === 'ADD_NEW_CAT') {
+      const newCat = prompt("Enter New Category Name:");
+      if (newCat) {
+        const updatedCats = [...categories, newCat];
+        setCategories(updatedCats);
+        localStorage.setItem('customCategories', JSON.stringify(updatedCats));
+        setFormData({ ...formData, category: newCat });
+      }
+      return;
+    }
+    if (name === 'account' && value === 'ADD_NEW_ACC') {
+      const newAcc = prompt("Enter New Bank/Account Name:");
+      if (newAcc) {
+        const updatedAccs = [...accounts, newAcc];
+        setAccounts(updatedAccs);
+        localStorage.setItem('customAccounts', JSON.stringify(updatedAccs));
+        setFormData({ ...formData, account: newAcc });
+      }
+      return;
+    }
+    setFormData({ ...formData, [name]: value });
   };
 
   const handleSubmit = async (e) => {
@@ -64,31 +188,27 @@ const Expenses = () => {
     const processedData = {
       pin: userPin,
       date: formData.date,
-      item: formData.item || '-',
+      item: formData.item || 'Untitled',
       category: formData.category,
-      account: formData.account, // Saving Account Info
+      account: formData.account,
       amount: parseFloat(formData.amount),
       createdAt: new Date()
     };
 
     try {
       if (isEditing) {
-        // UPDATE FIRESTORE
         const expenseRef = doc(db, "expenses", editId);
         await updateDoc(expenseRef, processedData);
         setIsEditing(false);
         setEditId(null);
       } else {
-        // ADD TO FIRESTORE
         await addDoc(collection(db, "expenses"), processedData);
       }
-
-      // Reset Form
       setFormData({
         date: new Date().toISOString().split('T')[0],
         item: '',
         category: 'Food',
-        account: 'CASH', // Reset to default
+        account: 'CASH',
         amount: ''
       });
     } catch (error) {
@@ -108,7 +228,7 @@ const Expenses = () => {
       date: expense.date,
       item: expense.item,
       category: expense.category,
-      account: expense.account || 'CASH', // Handle old data that might not have account
+      account: expense.account || 'CASH',
       amount: expense.amount
     });
     setIsEditing(true);
@@ -128,11 +248,9 @@ const Expenses = () => {
     });
   };
 
-  // Grouping Logic
   const getGroupedExpenses = () => {
     const groups = {};
     const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
-
     sortedExpenses.forEach(expense => {
       const dateObj = new Date(expense.date);
       const monthYear = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
@@ -150,18 +268,33 @@ const Expenses = () => {
     <div className="min-h-screen bg-emerald-50 font-sans text-emerald-950">
       
       {/* NAVBAR */}
-      <nav className="bg-emerald-900 text-white p-4 shadow-lg flex justify-between items-center sticky top-0 z-50">
+      <nav className="bg-emerald-900 text-white p-4 shadow-lg flex flex-wrap justify-between items-center sticky top-0 z-50">
         <h1 className="text-xl font-bold flex items-center gap-2">
           ₹ Expense Tracker 
           <span className="text-xs bg-emerald-700 px-2 py-0.5 rounded text-emerald-200">Cloud ID: {userPin}</span>
         </h1>
-        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-sm bg-emerald-800 hover:bg-emerald-700 px-3 py-1.5 rounded transition">
-          <LogOut size={16} /> Logout
-        </button>
+        
+        <div className="flex items-center gap-2 mt-2 md:mt-0">
+          {/* EXPORT BUTTON */}
+          <button onClick={handleExport} className="flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-600 px-3 py-1.5 rounded transition border border-emerald-600" title="Download CSV">
+            <FileDown size={16} /> <span className="hidden sm:inline">Export</span>
+          </button>
+
+          {/* IMPORT BUTTON */}
+          <button onClick={handleImportClick} className="flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-600 px-3 py-1.5 rounded transition border border-emerald-600" title="Upload CSV">
+            <Upload size={16} /> <span className="hidden sm:inline">Import</span>
+          </button>
+          {/* Hidden Input for File Upload */}
+          <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".csv" className="hidden" />
+
+          {/* LOGOUT */}
+          <button onClick={() => navigate('/')} className="flex items-center gap-2 text-sm bg-emerald-800 hover:bg-red-600 px-3 py-1.5 rounded transition ml-2">
+            <LogOut size={16} />
+          </button>
+        </div>
       </nav>
 
       <div className="max-w-6xl mx-auto p-6 space-y-8"> 
-        {/* Changed max-w-5xl to max-w-6xl to fit the extra column nicely */}
         
         {/* INPUT FORM */}
         <div className={`p-6 rounded-2xl shadow-sm border transition-all duration-300 ${isEditing ? 'bg-emerald-100 border-emerald-300' : 'bg-white border-emerald-100'}`}>
@@ -169,36 +302,28 @@ const Expenses = () => {
             <h3 className="text-lg font-bold">{isEditing ? 'Editing Expense...' : 'Add New Expense'}</h3>
             {isEditing && <button onClick={handleCancelEdit} className="text-sm text-red-500 hover:underline">Cancel</button>}
           </div>
+          
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-4"> 
-             {/* Changed grid cols to 6 to fit new field */}
-            
             <input type="date" name="date" value={formData.date} onChange={handleChange} className="p-3 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none" />
-            
-            <input type="text" name="item" placeholder="Item Name (Optional)" value={formData.item} onChange={handleChange} className="p-3 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none md:col-span-2" />
+            <input type="text" name="item" placeholder="Item Name (Optional)" value={formData.item} onChange={handleChange} className="p-1 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none md:col-span-1" />
             
             <select name="category" value={formData.category} onChange={handleChange} className="p-3 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none">
-              <option>Food</option>
-              <option>Metro Ticket (Recharge)</option>
-              <option>Ticket</option>
-              <option>Parking</option>
-              <option>Shopping</option>
-              <option>Entertainment</option>
-              <option>Others</option>
+              {categories.map((cat, index) => <option key={index} value={cat}>{cat}</option>)}
+              <option value="ADD_NEW_CAT" className="font-bold text-blue-600 bg-gray-100">+ Add New Category</option>
             </select>
 
-            {/* NEW BANK ACCOUNT DROPDOWN */}
-            <select name="account" value={formData.account} onChange={handleChange} className="p-3 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none font-semibold text-emerald-800">
-              <option value="CASH">CASH</option>
-              <option value="HDFC">HDFC</option>
-              <option value="SBI">SBI</option>
-              <option value="KOTAK">KOTAK</option>
-            </select>
 
             <div className="relative">
                <span className="absolute left-3 top-3 text-gray-400">₹</span>
                <input type="number" name="amount" placeholder="Amount" value={formData.amount} onChange={handleChange} className="w-full p-3 pl-8 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none" />
             </div>
+            
+            <select name="account" value={formData.account} onChange={handleChange} className="p-3 bg-white rounded-lg border focus:ring-2 focus:ring-emerald-400 outline-none font-semibold text-emerald-800">
+              {accounts.map((acc, index) => <option key={index} value={acc}>{acc}</option>)}
+              <option value="ADD_NEW_ACC" className="font-bold text-blue-600 bg-gray-100">+ Add New Account</option>
+            </select>
           </form>
+
           <button onClick={handleSubmit} className={`mt-4 w-full text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition ${isEditing ? 'bg-blue-600 hover:bg-blue-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
             {isEditing ? <><Save size={20} /> Update Expense</> : <><Plus size={20} /> Add Expense</>}
           </button>
@@ -210,7 +335,7 @@ const Expenses = () => {
         {/* EXPENSE TABLES */}
         {!loading && Object.keys(groupedExpenses).length === 0 ? (
           <div className="text-center p-10 text-gray-400 bg-white rounded-2xl border border-emerald-100">
-            No cloud data found for PIN: {userPin}.
+            No cloud data found for PIN: {userPin}.<br/>Add an expense or Import a CSV to get started.
           </div>
         ) : (
           Object.keys(groupedExpenses).map((month) => {
@@ -227,7 +352,7 @@ const Expenses = () => {
                       <th className="p-4 font-semibold">Date</th>
                       <th className="p-4 font-semibold">Item</th>
                       <th className="p-4 font-semibold">Category</th>
-                      <th className="p-4 font-semibold">Account</th> {/* New Header */}
+                      <th className="p-4 font-semibold">Account</th>
                       <th className="p-4 font-semibold">Amount</th>
                       <th className="p-4 font-semibold text-center">Actions</th>
                     </tr>
@@ -237,13 +362,8 @@ const Expenses = () => {
                       <tr key={expense.id} className={`border-t border-gray-100 hover:bg-gray-50 transition ${editId === expense.id ? 'bg-emerald-50' : ''}`}>
                         <td className="p-4 text-gray-600 text-sm">{expense.date}</td>
                         <td className="p-4 font-medium text-gray-800">{expense.item}</td>
-                        <td className="p-4 font-medium text-gray-800">{expense.category}</td>
-                        
-                        {/* New Account Column */}
-                        <td className="p-4 text-sm font-bold text-gray-600">
-                          {expense.account || 'CASH'}
-                        </td>
-                        
+                        <td className="p-4"><span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">{expense.category}</span></td>
+                        <td className="p-4 text-sm font-bold text-gray-600">{expense.account || 'CASH'}</td>
                         <td className="p-4 font-bold text-emerald-700">₹{expense.amount}</td>
                         <td className="p-4 text-center">
                           <div className="flex justify-center gap-2">
@@ -256,7 +376,7 @@ const Expenses = () => {
                   </tbody>
                   <tfoot>
                     <tr className="bg-emerald-50 border-t-2 border-emerald-100">
-                      <td colSpan="4" className="p-4 text-right font-bold text-emerald-900 uppercase text-sm">Total for {month}:</td> {/* Increased colSpan */}
+                      <td colSpan="4" className="p-4 text-right font-bold text-emerald-900 uppercase text-sm">Total for {month}:</td>
                       <td colSpan="2" className="p-4 font-extrabold text-xl text-emerald-700">₹{monthTotal.toFixed(2)}</td>
                     </tr>
                   </tfoot>
