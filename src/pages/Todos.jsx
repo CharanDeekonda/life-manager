@@ -82,7 +82,7 @@ const Todos = () => {
       <nav className="bg-slate-900 text-white p-4 shadow-lg flex justify-between items-center sticky top-0 z-50">
         <h1 className="text-xl font-bold flex items-center gap-2">
           <CheckSquare className="text-indigo-400" /> Daily Tasks
-          <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">Cloud ID: {userPin}</span>
+          <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">ID: {userPin}</span>
         </h1>
         <button onClick={() => navigate('/')} className="flex items-center gap-2 text-sm bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded transition">
           <LogOut size={16} /> Logout
@@ -107,8 +107,8 @@ const Todos = () => {
         </div>
 
         <div className="space-y-3">
-          {loading && <div className="text-center text-slate-400">Syncing with cloud...</div>}
-          {!loading && todos.length === 0 && <div className="text-center p-12 text-slate-400"><p>No cloud tasks yet.</p></div>}
+          {loading && <div className="text-center text-slate-400">Syncing...</div>}
+          {!loading && todos.length === 0 && <div className="text-center p-12 text-slate-400"><p>No tasks yet.</p></div>}
           
           {sortedTodos.map((todo) => (
             <div key={todo.id} className={`group flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${todo.completed ? 'bg-slate-50 border-slate-100 opacity-75' : 'bg-white border-slate-200 shadow-sm'}`}>

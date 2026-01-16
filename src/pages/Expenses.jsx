@@ -221,7 +221,7 @@ const Expenses = () => {
       });
     } catch (error) {
       console.error("Error adding document: ", error);
-      alert("Error saving to cloud");
+      alert("Error saving to data");
     }
   };
 
@@ -301,8 +301,8 @@ const Expenses = () => {
       {/* NAVBAR */}
       <nav className="bg-emerald-900 text-white p-4 shadow-lg flex flex-wrap justify-between items-center sticky top-0 z-50">
         <h1 className="text-xl font-bold flex items-center gap-2">
-          <DollarSign className="text-emerald-400" /> Expense Tracker 
-          <span className="text-xs bg-emerald-700 px-2 py-0.5 rounded text-emerald-200">Cloud ID: {userPin}</span>
+          ₹ Expense Tracker 
+          <span className="text-xs bg-emerald-700 px-2 py-0.5 rounded text-emerald-200">ID: {userPin}</span>
         </h1>
         
         <div className="flex items-center gap-2 mt-2 md:mt-0">
@@ -356,12 +356,12 @@ const Expenses = () => {
         </div>
 
         {/* LOADING STATE */}
-        {loading && <div className="text-center p-10 text-emerald-600">Loading Cloud Data...</div>}
+        {loading && <div className="text-center p-10 text-emerald-600">Loading Data...</div>}
 
         {/* EXPENSE TABLES */}
         {!loading && Object.keys(groupedExpenses).length === 0 ? (
           <div className="text-center p-10 text-gray-400 bg-white rounded-2xl border border-emerald-100">
-            No cloud data found for PIN: {userPin}.<br/>Add an expense or Import a CSV to get started.
+            No data found for PIN: {userPin}.<br/>Add an expense or Import a CSV to get started.
           </div>
         ) : (
           Object.keys(groupedExpenses).map((month) => {
