@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Trash2, LogOut, DollarSign, Calendar, Pencil, Save, FileDown, FileUp, Upload } from 'lucide-react';
+import { Plus, Trash2, LogOut, DollarSign, Calendar, Pencil, Save, FileDown, Upload } from 'lucide-react';
 
 // FIREBASE IMPORTS
 import { db } from '../firebase';
@@ -10,7 +10,7 @@ const Expenses = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const userPin = location.state?.pin;
-  const fileInputRef = useRef(null); // Ref for hidden file input
+  const fileInputRef = useRef(null);
 
   // --- DEFAULT LISTS ---
   const defaultCategories = ["Food", "Metro Ticket (Recharge)", "Ticket", "Parking", "Petrol", "Shopping", "Entertainment", "Others"];
@@ -31,6 +31,9 @@ const Expenses = () => {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   
+  // --- NOTIFICATION STATE ---
+  const [notification, setNotification] = useState('');
+
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     item: '',
@@ -62,37 +65,41 @@ const Expenses = () => {
     return () => unsubscribe();
   }, [userPin]);
 
+  // --- HELPER: FORMAT DATE (dd-mm-yyyy) ---
+  const formatDate = (isoDate) => {
+    if (!isoDate) return '';
+    const [year, month, day] = isoDate.split('-');
+    return `${day}-${month}-${year}`;
+  };
+
+  // --- SHOW NOTIFICATION HELPER ---
+  const showMessage = (msg) => {
+    setNotification(msg);
+    setTimeout(() => {
+      setNotification('');
+    }, 3000);
+  };
+
   // --- CSV EXPORT FUNCTION ---
   const handleExport = () => {
     if (expenses.length === 0) {
       alert("No data to export!");
       return;
     }
-
-    // 1. Create CSV Header
     const headers = ["Date", "Item", "Category", "Account", "Amount"];
-    
-    // 2. Map data to rows
     const rows = expenses.map(exp => [
-      exp.date,
-      `"${exp.item.replace(/"/g, '""')}"`, // Handle commas/quotes in item name
+      formatDate(exp.date), // Export formatted date
+      `"${exp.item.replace(/"/g, '""')}"`,
       exp.category,
       exp.account || 'CASH',
       exp.amount
     ]);
-
-    // 3. Join everything
-    const csvContent = [
-      headers.join(","), 
-      ...rows.map(row => row.join(","))
-    ].join("\n");
-
-    // 4. Create Download Link
+    const csvContent = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `expenses_${userPin}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `expenses_${userPin}_${formatDate(new Date().toISOString().split('T')[0])}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -100,7 +107,7 @@ const Expenses = () => {
 
   // --- CSV IMPORT FUNCTION ---
   const handleImportClick = () => {
-    fileInputRef.current.click(); // Trigger hidden input
+    fileInputRef.current.click();
   };
 
   const handleFileChange = (event) => {
@@ -111,48 +118,47 @@ const Expenses = () => {
     reader.onload = async (e) => {
       const text = e.target.result;
       const lines = text.split("\n");
-      
-      // Remove header row if present (simple check: if first line contains "Date")
       const startIdx = lines[0].toLowerCase().includes("date") ? 1 : 0;
-      
       let count = 0;
 
-      // Loop through lines
       for (let i = startIdx; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-
-        // Basic CSV splitting (handling simple cases)
-        // Format expected: date, item, category, account, amount
-        // NOTE: This basic split might fail if item name has commas. 
-        // For simple use, we assume clean CSVs.
         const cols = line.split(",");
         
         if (cols.length >= 5) {
+          // If importing dd-mm-yyyy, we might need to convert back to yyyy-mm-dd for sorting/storage
+          // But assuming standard import or re-importing exported file:
+          let dateStr = cols[0].trim();
+          
+          // Simple check if it's dd-mm-yyyy and convert to yyyy-mm-dd for consistent storage
+          if (dateStr.includes('-') && dateStr.split('-')[0].length === 2) {
+             const [d, m, y] = dateStr.split('-');
+             dateStr = `${y}-${m}-${d}`;
+          }
+
           const newExpense = {
             pin: userPin,
-            date: cols[0].trim(),
-            item: cols[1].replace(/"/g, '').trim(), // Remove quotes if present
+            date: dateStr, 
+            item: cols[1].replace(/"/g, '').trim(),
             category: cols[2].trim(),
             account: cols[3].trim(),
             amount: parseFloat(cols[4].trim()),
             createdAt: new Date()
           };
-
-          // Basic validation
           if (newExpense.amount && !isNaN(newExpense.amount)) {
             await addDoc(collection(db, "expenses"), newExpense);
             count++;
           }
         }
       }
-      alert(`Successfully imported ${count} expenses!`);
-      event.target.value = ''; // Reset input
+      showMessage(`Imported ${count} expenses successfully`);
+      event.target.value = ''; 
     };
     reader.readAsText(file);
   };
 
-  // --- HANDLERS (Same as before) ---
+  // --- HANDLERS ---
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === 'category' && value === 'ADD_NEW_CAT') {
@@ -199,10 +205,12 @@ const Expenses = () => {
       if (isEditing) {
         const expenseRef = doc(db, "expenses", editId);
         await updateDoc(expenseRef, processedData);
+        showMessage("Updated successfully"); 
         setIsEditing(false);
         setEditId(null);
       } else {
         await addDoc(collection(db, "expenses"), processedData);
+        showMessage("Added successfully"); 
       }
       setFormData({
         date: new Date().toISOString().split('T')[0],
@@ -220,6 +228,20 @@ const Expenses = () => {
   const handleDelete = async (id) => {
     if (window.confirm("Delete this expense?")) {
       await deleteDoc(doc(db, "expenses", id));
+      showMessage("Deleted successfully");
+    }
+  };
+
+  const handleDeleteMonth = async (monthName, monthExpenses) => {
+    if (window.confirm(`Are you sure you want to DELETE ALL ${monthExpenses.length} expenses for ${monthName}? This cannot be undone.`)) {
+      try {
+        const deletePromises = monthExpenses.map(exp => deleteDoc(doc(db, "expenses", exp.id)));
+        await Promise.all(deletePromises);
+        showMessage("Deleted successfully");
+      } catch (error) {
+        console.error("Error deleting month:", error);
+        alert("Error deleting data");
+      }
     }
   };
 
@@ -248,9 +270,11 @@ const Expenses = () => {
     });
   };
 
+  // --- GROUPING AND SORTING ---
   const getGroupedExpenses = () => {
     const groups = {};
-    const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const sortedExpenses = [...expenses].sort((a, b) => new Date(a.date) - new Date(b.date));
+    
     sortedExpenses.forEach(expense => {
       const dateObj = new Date(expense.date);
       const monthYear = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
@@ -265,29 +289,32 @@ const Expenses = () => {
   if (!userPin) return null;
 
   return (
-    <div className="min-h-screen bg-emerald-50 font-sans text-emerald-950">
+    <div className="min-h-screen bg-emerald-50 font-sans text-emerald-950 relative">
       
+      {/* SUCCESS NOTIFICATION TOAST */}
+      {notification && (
+        <div className="fixed top-20 right-5 z-50 bg-green-600 text-white px-6 py-3 rounded-lg shadow-xl font-bold animate-bounce flex items-center gap-2">
+           <span>✅ {notification}</span>
+        </div>
+      )}
+
       {/* NAVBAR */}
       <nav className="bg-emerald-900 text-white p-4 shadow-lg flex flex-wrap justify-between items-center sticky top-0 z-50">
         <h1 className="text-xl font-bold flex items-center gap-2">
-          ₹ Expense Tracker 
+          <DollarSign className="text-emerald-400" /> Expense Tracker 
           <span className="text-xs bg-emerald-700 px-2 py-0.5 rounded text-emerald-200">Cloud ID: {userPin}</span>
         </h1>
         
         <div className="flex items-center gap-2 mt-2 md:mt-0">
-          {/* EXPORT BUTTON */}
           <button onClick={handleExport} className="flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-600 px-3 py-1.5 rounded transition border border-emerald-600" title="Download CSV">
             <FileDown size={16} /> <span className="hidden sm:inline">Export</span>
           </button>
 
-          {/* IMPORT BUTTON */}
           <button onClick={handleImportClick} className="flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-600 px-3 py-1.5 rounded transition border border-emerald-600" title="Upload CSV">
             <Upload size={16} /> <span className="hidden sm:inline">Import</span>
           </button>
-          {/* Hidden Input for File Upload */}
           <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".csv" className="hidden" />
 
-          {/* LOGOUT */}
           <button onClick={() => navigate('/')} className="flex items-center gap-2 text-sm bg-emerald-800 hover:bg-red-600 px-3 py-1.5 rounded transition ml-2">
             <LogOut size={16} />
           </button>
@@ -311,7 +338,6 @@ const Expenses = () => {
               {categories.map((cat, index) => <option key={index} value={cat}>{cat}</option>)}
               <option value="ADD_NEW_CAT" className="font-bold text-blue-600 bg-gray-100">+ Add New Category</option>
             </select>
-
 
             <div className="relative">
                <span className="absolute left-3 top-3 text-gray-400">₹</span>
@@ -342,13 +368,24 @@ const Expenses = () => {
             const monthTotal = groupedExpenses[month].reduce((acc, curr) => acc + curr.amount, 0);
             return (
               <div key={month} className="bg-white rounded-2xl shadow-sm border border-emerald-100 overflow-hidden mb-8">
-                <div className="bg-emerald-100 px-6 py-3 border-b border-emerald-200 flex items-center gap-2">
-                  <Calendar size={18} className="text-emerald-700"/>
-                  <h2 className="text-lg font-bold text-emerald-800">{month}</h2>
+                <div className="bg-emerald-100 px-6 py-3 border-b border-emerald-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={18} className="text-emerald-700"/>
+                    <h2 className="text-lg font-bold text-emerald-800">{month}</h2>
+                  </div>
+                  {/* DELETE ALL BUTTON FOR THE MONTH */}
+                  <button 
+                    onClick={() => handleDeleteMonth(month, groupedExpenses[month])}
+                    className="flex items-center gap-1 text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg border border-red-200 transition font-bold"
+                  >
+                    <Trash2 size={14} /> Delete All
+                  </button>
                 </div>
+                
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-emerald-50 text-emerald-900 text-sm uppercase">
                     <tr>
+                      <th className="p-4 font-semibold text-gray-500 w-12 text-center">#</th>
                       <th className="p-4 font-semibold">Date</th>
                       <th className="p-4 font-semibold">Item</th>
                       <th className="p-4 font-semibold">Category</th>
@@ -358,9 +395,14 @@ const Expenses = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {groupedExpenses[month].map((expense) => (
+                    {groupedExpenses[month].map((expense, index) => (
                       <tr key={expense.id} className={`border-t border-gray-100 hover:bg-gray-50 transition ${editId === expense.id ? 'bg-emerald-50' : ''}`}>
-                        <td className="p-4 text-gray-600 text-sm">{expense.date}</td>
+                        {/* COUNT CELL */}
+                        <td className="p-4 text-gray-400 text-sm font-bold text-center">{index + 1}</td> 
+                        
+                        {/* FORMATTED DATE */}
+                        <td className="p-4 text-gray-800 text-sm">{formatDate(expense.date)}</td>
+                        
                         <td className="p-4 font-medium text-gray-800">{expense.item}</td>
                         <td className="p-4 font-medium text-gray-800">{expense.category}</td>
                         <td className="p-4 text-sm font-bold text-gray-600">{expense.account || 'CASH'}</td>
@@ -376,7 +418,7 @@ const Expenses = () => {
                   </tbody>
                   <tfoot>
                     <tr className="bg-emerald-50 border-t-2 border-emerald-100">
-                      <td colSpan="4" className="p-4 text-right font-bold text-emerald-900 uppercase text-sm">Total for {month}:</td>
+                      <td colSpan="5" className="p-4 text-right font-bold text-emerald-900 uppercase text-sm">Total for {month}:</td>
                       <td colSpan="2" className="p-4 font-extrabold text-xl text-emerald-700">₹{monthTotal.toFixed(2)}</td>
                     </tr>
                   </tfoot>
