@@ -362,7 +362,7 @@ const Expenses = () => {
                       <tr key={expense.id} className={`border-t border-gray-100 hover:bg-gray-50 transition ${editId === expense.id ? 'bg-emerald-50' : ''}`}>
                         <td className="p-4 text-gray-600 text-sm">{expense.date}</td>
                         <td className="p-4 font-medium text-gray-800">{expense.item}</td>
-                        <td className="p-4"><span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">{expense.category}</span></td>
+                        <td className="p-4 font-medium text-gray-800">{expense.category}</td>
                         <td className="p-4 text-sm font-bold text-gray-600">{expense.account || 'CASH'}</td>
                         <td className="p-4 font-bold text-emerald-700">₹{expense.amount}</td>
                         <td className="p-4 text-center">
