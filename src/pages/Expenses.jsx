@@ -88,7 +88,7 @@ const Expenses = () => {
     }
     const headers = ["Date", "Item", "Category", "Account", "Amount"];
     const rows = expenses.map(exp => [
-      formatDate(exp.date), // Export formatted date
+      formatDate(exp.date), 
       `"${exp.item.replace(/"/g, '""')}"`,
       exp.category,
       exp.account || 'CASH',
@@ -127,11 +127,8 @@ const Expenses = () => {
         const cols = line.split(",");
         
         if (cols.length >= 5) {
-          // If importing dd-mm-yyyy, we might need to convert back to yyyy-mm-dd for sorting/storage
-          // But assuming standard import or re-importing exported file:
           let dateStr = cols[0].trim();
           
-          // Simple check if it's dd-mm-yyyy and convert to yyyy-mm-dd for consistent storage
           if (dateStr.includes('-') && dateStr.split('-')[0].length === 2) {
              const [d, m, y] = dateStr.split('-');
              dateStr = `${y}-${m}-${d}`;
@@ -273,7 +270,8 @@ const Expenses = () => {
   // --- GROUPING AND SORTING ---
   const getGroupedExpenses = () => {
     const groups = {};
-    const sortedExpenses = [...expenses].sort((a, b) => new Date(a.date) - new Date(b.date));
+    // SORT ENTRIES DESCENDING (Newest dates first)
+    const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
     
     sortedExpenses.forEach(expense => {
       const dateObj = new Date(expense.date);
@@ -301,7 +299,7 @@ const Expenses = () => {
       {/* NAVBAR */}
       <nav className="bg-emerald-900 text-white p-4 shadow-lg flex flex-wrap justify-between items-center sticky top-0 z-50">
         <h1 className="text-xl font-bold flex items-center gap-2">
-          ₹ Expense Tracker 
+          <DollarSign className="text-emerald-400" /> Expense Tracker 
           <span className="text-xs bg-emerald-700 px-2 py-0.5 rounded text-emerald-200">ID: {userPin}</span>
         </h1>
         
@@ -364,7 +362,9 @@ const Expenses = () => {
             No data found for PIN: {userPin}.<br/>Add an expense or Import a CSV to get started.
           </div>
         ) : (
-          Object.keys(groupedExpenses).map((month) => {
+          Object.keys(groupedExpenses)
+            .sort((a, b) => new Date(b) - new Date(a)) // SORT MONTHS DESCENDING (Newest month first)
+            .map((month) => {
             const monthTotal = groupedExpenses[month].reduce((acc, curr) => acc + curr.amount, 0);
             return (
               <div key={month} className="bg-white rounded-2xl shadow-sm border border-emerald-100 overflow-hidden mb-8">
